@@ -2,8 +2,8 @@ from datetime import datetime, timezone
 
 from django.db import models
 from django.contrib.auth.models import User
-from django.db.models import Sum
-#from django.template.defaultfilters import truncatewords
+from django.urls import reverse
+
 
 
 
@@ -11,35 +11,55 @@ class Author(models.Model):
     authorUser = models.OneToOneField(User, on_delete=models.CASCADE)
     ratingAuthor = models.SmallIntegerField(default=0)
 
+    def __str__(self):
+        # return '{}'.format(self.authorUser)
+        return f'{self.authorUser}'
+
     def update_rating(self):
-        postRat = self.post_set.aggregate(postRating=Sum('rating'))
-        pRat = 0
-        pRat += postRat.get('postRating')
+        user = self.authorUser
+        #определяем список всех постов автора
+        post_list = Post.objects.filter(author=self)
 
-        commentRat = self.authorUser.comment_set.aggregate(commentRating=Sum('rating'))
-        cRat = 0
-        cRat += commentRat.get('commentRating')
+        #вытаскиваем из списка постов рейтинг и считаем его сумму
+        post_rating_list = post_list.values('rating')
+        post_rating = sum(item['rating'] for item in post_rating_list)
 
-        self.ratingAuthor = pRat * 3 + cRat
+        #определяем список со всеми комментариями автора и считаем их рейтинг
+        comment_rating_list = Comment.objects.filter(commentUser=user).values('rating')
+        comment_rating = 0
+        comment_rating += sum(item['rating'] for item in comment_rating_list)
+
+        #определяем рейтинг всех комментариев к статьям автора
+        comment_in_post_rating = 0
+        for post in post_list:
+            comments_in_post = Comment.objects.filter(commentPost=post).values('rating')
+            comment_in_post_rating += sum(item['rating'] for item in comments_in_post)
+
+        #Считаем общий рейтинг автора
+        self.ratingAuthor = post_rating * 3 + comment_rating + comment_in_post_rating
         self.save()
 
 
 class Category(models.Model):
-    name = models.CharField(max_length=64, unique=True)
+    name = models.CharField(max_length=32, unique=True)
+
+    def __str__(self):
+        return f'{self.name}'
 
 
 class Post(models.Model):
     author = models.ForeignKey(Author, on_delete=models.CASCADE)
+    timeAdding = models.DateTimeField(auto_now_add=True)
+    title = models.CharField(max_length=128)
+
     NEWS = 'NW'
     ARTICLE = 'AR'
     CATEGORY_CHOICES = (
         (NEWS, 'Новость'),
         (ARTICLE, 'Статья'),
     )
-    categoryType = models.CharField(max_length=2, choices=CATEGORY_CHOICES, default=ARTICLE)
-    dateCreation = models.DateTimeField(auto_now_add=True)
+    postType = models.CharField(max_length=2, choices=CATEGORY_CHOICES, default=NEWS)
     postCategory = models.ManyToManyField(Category, through='PostCategory')
-    title = models.CharField(max_length=128)
     text = models.TextField()
     rating = models.SmallIntegerField(default=0)
 
@@ -52,21 +72,24 @@ class Post(models.Model):
         self.save()
 
     def preview(self):
-        return self.text[0:123] + '...'
+        return f'{self.text[0:123]}...'
 
     def __str__(self):
-        return f'{self.title.title()}: {self.text[:20]}'
+        return f'{self.title}'
+
+    def get_absolute_url(self):
+        return reverse('post_detail', args=[str(self.id)])
 
 class PostCategory(models.Model):
-    postThrough = models.ForeignKey(Post, on_delete=models.CASCADE)
-    categoryThrough = models.ForeignKey(Category, on_delete=models.CASCADE)
+    postLink = models.ForeignKey(Post, on_delete=models.CASCADE)
+    categoryLink = models.ForeignKey(Category, on_delete=models.CASCADE)
 
 
 class Comment(models.Model):
     commentPost = models.ForeignKey(Post, on_delete=models.CASCADE)
     commentUser = models.ForeignKey(User, on_delete=models.CASCADE)
     text = models.TextField()
-    dateCreation = models.DateTimeField(auto_now_add=True)
+    timeAdding = models.DateTimeField(auto_now_add=True)
     rating = models.SmallIntegerField(default=0)
 
     def like(self):
