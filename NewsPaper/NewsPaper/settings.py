@@ -9,9 +9,8 @@ https://docs.djangoproject.com/en/4.0/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/4.0/ref/settings/
 """
-
-from pathlib import Path
 import os
+from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -28,12 +27,6 @@ DEBUG = True
 
 ALLOWED_HOSTS = []
 
-SITE_ID = 1
-
-# подключаем фронтенд
-STATICFILES_DIRS = [
-    BASE_DIR / "static"
-]
 
 # Application definition
 
@@ -46,13 +39,14 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'django.contrib.sites',
     'django.contrib.flatpages',
-    'news',
+    'news.apps.NewsConfig',
     'accounts',
     'django_filters',
     'allauth',
     'allauth.account',
     'allauth.socialaccount',
     'allauth.socialaccount.providers.google',
+    'django_apscheduler'
 ]
 
 MIDDLEWARE = [
@@ -141,6 +135,8 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+SITE_ID = 1
+
 STATICFILES_DIRS = [
     BASE_DIR / "static"
 ]
@@ -169,3 +165,29 @@ EMAIL_HOST_PASSWORD = 'xxxxxx'
 EMAIL_USE_SSL = True
 
 DEFAULT_FROM_EMAIL = 'xxxxxx@yandex.ru'
+
+# Format string for displaying run time timestamps in the Django admin site. The default
+# just adds seconds to the standard Django format, which is useful for displaying the timestamps
+# for jobs that are scheduled to run on intervals of less than one minute.
+#
+# See https://docs.djangoproject.com/en/dev/ref/settings/#datetime-format for format string
+# syntax details.
+APSCHEDULER_DATETIME_FORMAT = "N j, Y, f:s a"
+
+# Maximum run time allowed for jobs that are triggered manually via the Django admin site, which
+# prevents admin site HTTP requests from timing out.
+#
+# Longer running jobs should probably be handed over to a background task processing library
+# that supports multiple background worker processes instead (e.g. Dramatiq, Celery, Django-RQ,
+# etc. See: https://djangopackages.org/grids/g/workers-queues-tasks/ for popular options).
+APSCHEDULER_RUN_NOW_TIMEOUT = 25  # Seconds
+
+#Настройки для Celery
+#CELERY_BROKER_URL = 'redis://localhost:6379'
+CELERY_BROKER_URL = 'redis://:I7vbvxSw7C2W3O5t7ZdcWgpqEn8g2M9H@redis-11961.c53.west-us.azure.cloud.redislabs.com:11961'
+#CELERY_RESULT_BACKEND = 'redis://localhost:6379'
+CELERY_RESULT_BACKEND = 'redis://:I7vbvxSw7C2W3O5t7ZdcWgpqEn8g2M9H@redis-11961.c53.west-us.azure.cloud.redislabs.com:11961'
+CELERY_ACCEPT_CONTENT = ['application/json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_ACKS_LATE = True

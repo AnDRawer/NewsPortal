@@ -42,9 +42,15 @@ class Author(models.Model):
 
 class Category(models.Model):
     name = models.CharField(max_length=32, unique=True)
+    subscribers = models.ManyToManyField(User)
 
     def __str__(self):
         return f'{self.name}'
+
+    class Meta:
+        verbose_name = 'Категория'
+        verbose_name_plural = 'Категории'
+
 
 
 class Post(models.Model):
@@ -99,3 +105,7 @@ class Comment(models.Model):
     def dislike(self):
         self.rating -= 1
         self.save()
+        
+    class Meta:
+        verbose_name = 'Комментарий'
+        verbose_name_plural = 'Комментарии'
