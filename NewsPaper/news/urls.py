@@ -11,8 +11,8 @@ urlpatterns = [
     path('articles/create/', ArticleCreate.as_view(), name='article_create'),
     path('articles/<int:pk>/edit/', ArticleUpdate.as_view(), name='article_update'),
     path('articles/<int:pk>/delete/', ArticleDelete.as_view(), name='article_delete'),
-    path('news/search', SearchList.as_view(), name='found_list'),
-    path('user', UserUpdateView.as_view(), name='user_update'),
+    path('news/search/', SearchList.as_view(), name='found_list'),
+    path('user/', UserUpdateView.as_view(), name='user_update'),
     path('upgrade/', upgrade_me, name='upgrade'),
 
     path('categories/<int:pk>/', CategoryDetailView.as_view(), name='category_detail'),

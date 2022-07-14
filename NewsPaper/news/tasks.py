@@ -78,7 +78,7 @@ def notify_subscribers_weekly():
 def notify_new_post_with_celery(post_pk):
     instance = Post.objects.get(pk=post_pk)
     subscribers_list = []
-    # получаем категорИИ нового поста
+    # получаем категории нового поста
     categories_current_post = instance.postCategory.all()
 
     # проходим все категории поста и всех подписчиков добавляем в список для отправки

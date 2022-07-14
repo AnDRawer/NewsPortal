@@ -12,7 +12,7 @@ from .tasks import notify_new_post_with_celery
 # @receiver(m2m_changed, sender=PostCategory)
 # def notify_new_post(sender, instance, **kwargs):
 #     subscribers_list = []
-#     # получаем категорИИ нового поста
+#     # получаем категории нового поста
 #     categories_current_post = instance.postCategory.all()
 #
 #     # проходим все категории поста и всех подписчиков добавляем в список для отправки
