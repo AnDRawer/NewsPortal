@@ -1,21 +1,27 @@
 from django.urls import path
-from .views import NewsList, PostDetail, NewsCreate, NewsUpdate, NewsDelete, ArticleCreate, ArticleUpdate, \
-    ArticleDelete, SearchList, UserUpdateView, upgrade_me, CategoryDetailView, subscribe_me, unsubscribe_me
+
+from django.views.decorators.cache import cache_page
+from .views import (NewsList, NewsDetail, PostCreateNW, PostSearchView,
+                    PostEditNW, PostDeleteNW, UserEdit, LoginUser, CategoryList,
+                    add_subscribe)
+
 
 urlpatterns = [
-    path('news/', NewsList.as_view(), name='news_list'),
-    path('news/<int:pk>', PostDetail.as_view(), name='post_detail'),
-    path('news/create/', NewsCreate.as_view(), name='news_create'),
-    path('news/<int:pk>/edit/', NewsUpdate.as_view(), name='news_update'),
-    path('news/<int:pk>/delete/', NewsDelete.as_view(), name='news_delete'),
-    path('articles/create/', ArticleCreate.as_view(), name='article_create'),
-    path('articles/<int:pk>/edit/', ArticleUpdate.as_view(), name='article_update'),
-    path('articles/<int:pk>/delete/', ArticleDelete.as_view(), name='article_delete'),
-    path('news/search/', SearchList.as_view(), name='found_list'),
-    path('user/', UserUpdateView.as_view(), name='user_update'),
-    path('upgrade/', upgrade_me, name='upgrade'),
+    path('', cache_page(60)(NewsList.as_view()), name='post_list'),
+    path('<int:pk>/', cache_page(300)(NewsDetail.as_view()), name='post_detail'),
+    path('search/', PostSearchView.as_view()),
+    path('create/', PostCreateNW.as_view(), name='post_createNW'),
 
-    path('categories/<int:pk>/', CategoryDetailView.as_view(), name='category_detail'),
-    path('subscribe/<int:cat_id>', subscribe_me, name='subscribe'),
-    path('unsubscribe/<int:cat_id>', unsubscribe_me, name='unsubscribe'),
+    path('<int:pk>/edit/', PostEditNW.as_view(), name='post_editNW'),
+
+    path('<int:pk>/delete/', PostDeleteNW.as_view(), name='post_deleteNW'),
+
+    path('login/', LoginUser.as_view(), name='login'),
+    path('<username>/edit/', UserEdit.as_view(), name='user_edit'),
+    path('category/', CategoryList.as_view(), name='category'),
+
+    path('add_subscribe/<int:pk>/', add_subscribe, name='add_subscribe'),
+    # path('<int:pk>/del_subscribe/', del_subscribe, name='del_subscribe'),
+
+
 ]

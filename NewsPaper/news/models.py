@@ -1,73 +1,56 @@
-from datetime import datetime, timezone
-
 from django.db import models
-from django.contrib.auth.models import User
+from django.contrib.auth.models import  User
+from django.db.models import Sum
 from django.urls import reverse
+from django.core.cache import cache
 
-
-
-
-class Author(models.Model):
+class Author(models.Model): #Модель, содержащая объекты всех авторов.
     authorUser = models.OneToOneField(User, on_delete=models.CASCADE)
     ratingAuthor = models.SmallIntegerField(default=0)
 
     def __str__(self):
-        # return '{}'.format(self.authorUser)
         return f'{self.authorUser}'
 
+
     def update_rating(self):
-        user = self.authorUser
-        #определяем список всех постов автора
-        post_list = Post.objects.filter(author=self)
+        postRat = self.post_set.aggregate(postRating=Sum('rating'))
+        pRat = 0
+        pRat += postRat.get('postRating')
+        commentRat = self.authorUser.comment_set.aggregate(commentRating=Sum('rating'))
+        cRat = 0
+        cRat += commentRat.get('commentRating')
 
-        #вытаскиваем из списка постов рейтинг и считаем его сумму
-        post_rating_list = post_list.values('rating')
-        post_rating = sum(item['rating'] for item in post_rating_list)
-
-        #определяем список со всеми комментариями автора и считаем их рейтинг
-        comment_rating_list = Comment.objects.filter(commentUser=user).values('rating')
-        comment_rating = 0
-        comment_rating += sum(item['rating'] for item in comment_rating_list)
-
-        #определяем рейтинг всех комментариев к статьям автора
-        comment_in_post_rating = 0
-        for post in post_list:
-            comments_in_post = Comment.objects.filter(commentPost=post).values('rating')
-            comment_in_post_rating += sum(item['rating'] for item in comments_in_post)
-
-        #Считаем общий рейтинг автора
-        self.ratingAuthor = post_rating * 3 + comment_rating + comment_in_post_rating
+        self.ratingAuthor = pRat *3 + cRat
         self.save()
 
 
-class Category(models.Model):
-    name = models.CharField(max_length=32, unique=True)
-    subscribers = models.ManyToManyField(User)
-
+class Category(models.Model): #Категории новостей/статей — темы, которые они отражают (спорт, политика, образование и т. д.)
+    name = models.CharField(max_length=255, unique = True)
+    subscribers = models.ManyToManyField(User, blank=True, related_name='subscribers')
+    
     def __str__(self):
         return f'{self.name}'
 
-    class Meta:
-        verbose_name = 'Категория'
-        verbose_name_plural = 'Категории'
 
 
 
 class Post(models.Model):
     author = models.ForeignKey(Author, on_delete=models.CASCADE)
-    timeAdding = models.DateTimeField(auto_now_add=True)
-    title = models.CharField(max_length=128)
 
     NEWS = 'NW'
     ARTICLE = 'AR'
-    CATEGORY_CHOICES = (
+    CATEGORY_CHOISES = (
         (NEWS, 'Новость'),
-        (ARTICLE, 'Статья'),
+        (ARTICLE, "Статья"),
     )
-    postType = models.CharField(max_length=2, choices=CATEGORY_CHOICES, default=NEWS)
-    postCategory = models.ManyToManyField(Category, through='PostCategory')
-    text = models.TextField()
-    rating = models.SmallIntegerField(default=0)
+
+    categoryType = models.CharField(max_length=2, choices=CATEGORY_CHOISES, default=ARTICLE)
+    dateCreation = models.DateTimeField(auto_now_add=True) #автоматически добавляемая дата и время создания
+    postCategory = models.ManyToManyField(Category, through="PostCategory") #связь «многие ко многим» с моделью Category - добавить (с дополнительной моделью PostCategory)
+
+    title = models.CharField(max_length=128) # доработать может не тот тип заголовок статьи/новости
+    text = models.TextField()  # доработать текст статьи/новости
+    rating = models.SmallIntegerField(default=0)  # доработать рейтинг статьи/новости
 
     def like(self):
         self.rating += 1
@@ -78,25 +61,29 @@ class Post(models.Model):
         self.save()
 
     def preview(self):
-        return f'{self.text[0:123]}...'
+        return self.text[0:123] + '...'
 
     def __str__(self):
-        return f'{self.title}'
+        return self.title.title()
 
     def get_absolute_url(self):
         return reverse('post_detail', args=[str(self.id)])
 
-class PostCategory(models.Model):
-    postLink = models.ForeignKey(Post, on_delete=models.CASCADE)
-    categoryLink = models.ForeignKey(Category, on_delete=models.CASCADE)
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)  # сначала вызываем метод родителя, чтобы объект сохранился
+        cache.delete(f'product-{self.pk}')
+
+class PostCategory (models.Model): #Под каждой новостью/статьёй можно оставлять комментарии, поэтому необходимо организовать их способ хранения тоже.
+    postThrough = models.ForeignKey(Post, on_delete=models.CASCADE)
+    categoryThrough = models.ForeignKey(Category, on_delete=models.CASCADE)
 
 
-class Comment(models.Model):
-    commentPost = models.ForeignKey(Post, on_delete=models.CASCADE)
-    commentUser = models.ForeignKey(User, on_delete=models.CASCADE)
-    text = models.TextField()
-    timeAdding = models.DateTimeField(auto_now_add=True)
-    rating = models.SmallIntegerField(default=0)
+class Comment (models.Model):
+    commentPost = models.ForeignKey(Post, on_delete=models.CASCADE) # связь «один ко многим» с моделью Post
+    commentUser = models.ForeignKey(User, on_delete=models.CASCADE) #добавить комментарии может оставить любой пользователь, необязательно автор
+    text = models.TextField() #доработать
+    dateCreations = models.DateTimeField(auto_now_add=True) #дата и время создания комментария
+    rating = models.SmallIntegerField(default=0)  #рейтинг комментария
 
     def like(self):
         self.rating += 1
@@ -105,7 +92,9 @@ class Comment(models.Model):
     def dislike(self):
         self.rating -= 1
         self.save()
-        
-    class Meta:
-        verbose_name = 'Комментарий'
-        verbose_name_plural = 'Комментарии'
+
+
+
+
+
+

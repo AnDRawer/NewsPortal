@@ -1,168 +1,180 @@
+from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
-from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
-from django.contrib.auth.models import Group
-from django.shortcuts import redirect
+from django.contrib.auth.models import User
+from django.contrib.auth.views import LoginView
+# from django.core.mail import send_mail
+# from django.http import HttpResponse
+from django.shortcuts import render, redirect
 from django.urls import reverse_lazy
-from django.views.generic import ListView, DetailView, CreateView, UpdateView, DeleteView
+from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
+# from django.views import View
+from django.views.generic import TemplateView
+from django.views.generic import (
+    ListView, DetailView, CreateView, UpdateView, DeleteView
+)
+from .models import Post, Category
+from .filters import PostSearch
+from .forms import PostForm, UserForm
+from django.core.cache import cache
+import logging
 
-from .filters import PostFilter
-from .models import Post, Category, PostCategory
-from .forms import NewsForm, UserForm
+logger = logging.getLogger(__name__)
+
+class NewsList(LoginRequiredMixin, ListView):
+   model = Post
+   ordering = 'title'
+   template_name = 'News.html'
+   context_object_name = 'news'
+   extra_context = {'title': 'Новости'}
+   author = 'author'
+   # queryset = Post.objects.order_by('-dateCreation')
+   paginate_by = 10
+
+   # Переопределяем функцию получения списка товаров
+   def get_queryset(self):
+       # Получаем обычный запрос
+       queryset = super().get_queryset()
+       # Используем наш класс фильтрации.
+       # self.request.GET содержит объект QueryDict, который мы рассматривали
+       # в этом юните ранее.
+       # Сохраняем нашу фильтрацию в объекте класса,
+       # чтобы потом добавить в контекст и использовать в шаблоне.
+       self.filterset = PostSearch(self.request.GET, queryset)
+       # Возвращаем из функции отфильтрованный список товаров
+       return self.filterset.qs
+
+   def get_context_data(self, **kwargs):
+       context = super().get_context_data(**kwargs)
+       # Добавляем в контекст объект фильтрации.
+       context['filterset'] = self.filterset
+       return context
+
+   def post_search(request):
+       f = PostSearch(request.GET,
+                      queryset=Post.objects.all())
+       return render(request,
+                     'news_search.html',
+                     {'filter': f})
 
 
-# Представление для вывода всех постов
-class NewsList(ListView):
+class NewsDetail(DetailView):
     model = Post
-    ordering = '-id'
-    template_name = 'news.html'
-    context_object_name = 'all_news'
-    paginate_by = 10
+    template_name = 'onenews.html'
+    context_object_name = 'onenews'
+    queryset = Post.objects.all()
 
-    # Переопределяем функцию получения списка постов
+    def get_object(self, *args, **kwargs):
+        obj = cache.get(f'post-{self.kwargs["pk"]}', None)
+        if not obj:
+            obj = super().get_object(queryset=self.queryset)
+            cache.set(f'post-{self.kwargs["pk"]}', obj)
+        return obj
+
+
+class PostSearchView(ListView):
+    model = Post  # указываем модель, объекты которой мы будем выводить
+    template_name = 'search.html'  # указываем имя шаблона, в котором будет лежать HTML, в котором будут все инструкции о том, как именно пользователю должны вывестись наши объекты
+    context_object_name = 'NewsSearch'
+    paginate_by = 10  # поставим постраничный вывод в 10 элементов
+    ordering = ['-id']
+    queryset = Post.objects.all()  # Default: Model.objects.all()
+    # form_class = PostForm  # добавляем форм класс, чтобы получать доступ к форме через метод POST
+
+    def get_filter(self):
+        return PostSearch(self.request.GET, queryset=super().get_queryset())
+
     def get_queryset(self):
-        # Получаем обычный запрос
-        queryset = super().get_queryset()
-        # Используем наш класс фильтрации
-        # self.request.GET содержит объект QueryDict
-        # Сохраняем фильтрацию в объекте класса, чтобы потом добавить в контекст и использовать в шаблоне
-        self.filterset = PostFilter(self.request.GET, queryset)
-        # Возвращаем из функции отфильтрованный список постов
-        return self.filterset.qs
+        return self.get_filter().qs
 
     def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        # Добавляем в контекст объект фильтрации
-        context['filterset'] = self.filterset
-        return context
+        return {
+            **super().get_context_data(**kwargs),
+            'filter': self.get_filter(),
+        }
 
 
-# представление для просмотра поста/новости/статьи
-class PostDetail(DetailView):
+class PostCreateNW(PermissionRequiredMixin, CreateView):
+    # Указываем нашу разработанную форму
+    form_class = PostForm
+    # модель товаров
     model = Post
-    template_name = 'post.html'
-    context_object_name = 'post_detail'
-
-
-# представление для создания поста/НОВОСТИ
-class NewsCreate(PermissionRequiredMixin, CreateView):
-    form_class = NewsForm
-    model = Post
+    # и новый шаблон, в котором используется форма.
     template_name = 'news_edit.html'
-    permission_required = ('news.add_post',)
+    permission_required = ('create.Post_Create',)
 
     def form_valid(self, form):
-        news_post = form.save(commit=False)
-        news_post.postType = 'NW'
+        post = form.save(commit=True)
+        post.categoryType = "NW"
         return super().form_valid(form)
 
 
-# представление для редактирования поста/НОВОСТИ
-class NewsUpdate(PermissionRequiredMixin, UpdateView):
-    form_class = NewsForm
+class PostEditNW(PermissionRequiredMixin, UpdateView):
+    form_class = PostForm
     model = Post
     template_name = 'news_edit.html'
-    permission_required = ('news.change_post',)
 
-
-# представление для удаления поста/НОВОСТИ
-class NewsDelete(DeleteView):
+class PostDeleteNW(DeleteView):
     model = Post
-    template_name = 'post_delete.html'
-    success_url = reverse_lazy('news_list')
+    template_name = 'news_delete.html'
+    success_url = reverse_lazy('post_list')
 
 
-# представление для создания поста/СТАТЬИ
-class ArticleCreate(PermissionRequiredMixin, CreateView):
-    form_class = NewsForm
+
+class PostDeleteAR(DeleteView):
     model = Post
-    template_name = 'news_edit.html'
-    permission_required = ('news.add_post',)
+    template_name = 'articles_delete.html'
+    success_url = reverse_lazy('post_list')
 
-    def form_valid(self, form):
-        news_post = form.save(commit=False)
-        news_post.postType = 'AR'
-        return super().form_valid(form)
-
-
-# представление для редактирования поста/СТАТЬИ
-class ArticleUpdate(PermissionRequiredMixin, UpdateView):
-    form_class = NewsForm
-    model = Post
-    template_name = 'news_edit.html'
-    permission_required = ('news.change_post',)
-
-
-# представление для удаления поста/СТАТЬИ
-class ArticleDelete(DeleteView):
-    model = Post
-    template_name = 'post_delete.html'
-    success_url = reverse_lazy('news_list')
-
-
-# Представление для страницы с поиском постов
-class SearchList(ListView):
-    model = Post
-    ordering = '-id'
-    template_name = 'search.html'
-    context_object_name = 'found_news'
-    paginate_by = 10
-
-    def get_queryset(self):
-        queryset = super().get_queryset()
-        self.filterset = PostFilter(self.request.GET, queryset)
-        return self.filterset.qs
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        context['filterset'] = self.filterset
-        return context
-
-
-# представление для редактирования профиля User'а
-class UserUpdateView(LoginRequiredMixin, UpdateView):
+class LoginUser(LoginRequiredMixin, LoginView):
     form_class = UserForm
-    template_name = 'profile.html'
-    success_url = 'news/'
+    template_name = 'user_login.html'
+    def get_context_data(self, *, object_list=None, **kwargs):
+        context = super().get_context_data(**kwargs)
+        c_def = self.get_user_context(title='Авторизация')
+        return dict(list(context.items()) + list(c_def.items()))
+
+    def get_success_url(self):
+        return  reverse_lazy('news')
+
+class UserEdit(LoginRequiredMixin, LoginView):
+    form_class = UserForm
+    # model = User
+    template_name = 'user_edit.html'
+    success_url = reverse_lazy('post_list')
 
     def get_object(self, **kwargs):
         return self.request.user
 
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        context['is_not_author'] = not self.request.user.groups.filter(name='authors').exists()
-        return context
+class ProtectedView(LoginRequiredMixin, TemplateView):
+    template_name = 'prodected_page.html'
 
 
-# Функция-представление для апгрейда аккаунта до автора
+class CategoryList(ListView):
+    model = Category
+    ordering = 'name'
+    template_name = 'category.html'
+    context_object_name = 'category'
+    paginate_by = 10
+
+
 @login_required
-def upgrade_me(request):
-    user = request.user
-    authors_group = Group.objects.get(name='authors')
-    if not request.user.groups.filter(name='authors').exists():
-        authors_group.user_set.add(user)
-    return redirect('/user')
+def add_subscribe(request, pk):
+    Category.objects.get(pk=pk).subscribers.add(request.user)
+    return redirect('/news/')
 
 
-# Представление для получения деталей категории
-class CategoryDetailView(DetailView):
-    template_name = 'category_detail.html'
-    queryset = Category.objects.all()
+# class HelloTask(View):
+#     def get(self, request):
+#         hello.delay()
+#         return HttpResponse('Hello!')
+#
+#
+# class SendMail(View):
+#     def get(self, request, send_mail_for_sub_test=None):
+#         # printer.apply_async([10], countdown=10)
+#         # hello.delay()
+#         send_mail_for_sub_test.delay()
+#         return HttpResponse('Hello!')
 
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        context['all_links'] = PostCategory.objects.all()
-        return context
-
-
-# Функция-представление для подписки на категорию
-@login_required
-def subscribe_me(request, cat_id):
-    Category.objects.get(pk=cat_id).subscribers.add(request.user)
-    return redirect(f'/categories/{cat_id}/')
-
-
-# Функция-представление для отписки от категории
-@login_required
-def unsubscribe_me(request, cat_id):
-    Category.objects.get(pk=cat_id).subscribers.remove(request.user)
-    return redirect(f'/categories/{cat_id}/')
+# def index(request):
+#     return HttpResponse
